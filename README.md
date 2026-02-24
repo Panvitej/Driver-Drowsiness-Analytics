@@ -1,237 +1,216 @@
-Driver Drowsiness Analytics System
-https://img.shields.io/badge/Python-3.7+-blue.svg
-https://img.shields.io/badge/OpenCV-4.5+-green.svg
-https://img.shields.io/badge/MediaPipe-0.8+-orange.svg
-https://img.shields.io/badge/License-MIT-yellow.svg
+# Driver Drowsiness Analytics  
+*A vision-based behavioural analytics system for detecting driver fatigue and anomalous behaviour from video.*
 
-A vision-based driver drowsiness detection and analytics system that monitors driver behaviour in real-time using computer vision techniques. The system tracks multiple behavioural cues including eye closure, yawning, hand-to-face proximity, and head motion to compute a drowsiness index and generate comprehensive analytics.
+---
 
-📋 Table of Contents
-Overview
+## Project Overview
 
-Features
+This project presents a complete **driver drowsiness analytics pipeline** that analyses a driver’s face and hand behaviour from video streams and produces:
 
-System Architecture
+1. a **real-time annotated output video**, and  
+2. a **post-run analytics dashboard** summarising driver behaviour and risk trends.
 
-Installation
+The system is developed as an academic project at **:contentReference[oaicite:0]{index=0}** and focuses on interpretable, landmark-based computer vision rather than black-box deep learning.
 
-Usage
+---
 
-Technical Details
+## Key Idea
 
-Outputs
+Instead of classifying a driver as simply *alert* or *drowsy*, the system continuously measures multiple behavioural cues, aggregates them over time, and produces:
 
-Results
+- a **temporal drowsiness score**, and  
+- a **facial anomaly score**,  
 
-Future Work
+which are further stabilised using **asymmetric exponential smoothing** to avoid sudden and unstable predictions.
 
-Contributing
+---
 
-Acknowledgments
+## Features
 
-Citation
+The system analyses the following behavioural signals:
 
-Contact
+- **Eye closure** using Eye Aspect Ratio (EAR)  
+- **Yawning** using a normalised mouth–chin distance  
+- **Hand-to-face proximity** to detect face touching or occlusion  
+- **Head vertical motion** to capture nodding behaviour  
 
-🔍 Overview
-Driver fatigue, inattention, and micro-sleep are among the leading causes of road accidents worldwide. This system provides a non-intrusive, real-time solution for monitoring driver drowsiness using only a standard camera. By analysing facial landmarks and hand movements, it detects early signs of fatigue and alerts the driver before a potential incident.
+These are combined over a sliding time window to generate meaningful risk trends instead of frame-by-frame decisions.
 
-The system produces two main outputs:
+---
 
-Real-time annotated video with on-screen status indicators
+## System Outputs
 
-Post-processing analytics dashboard with temporal behaviour analysis
+### 1. Annotated Video Output
+Each frame contains:
+- EAR and yawn ratio values  
+- flags for eyes closed, yawning, and hand near face  
+- windowed behaviour percentages  
+- smoothed temporal and anomaly scores  
+- driver status and advisory message
 
-✨ Features
-Real-time Monitoring
-Eye Closure Detection - Using Eye Aspect Ratio (EAR) to detect closed eyes and micro-sleeps
+### 2. Analytics Dashboard
+A post-processing dashboard is generated from stored frame-level metrics and includes:
 
-Yawning Detection - Measuring mouth opening normalized by face width
+- time-series plots of temporal drowsiness score  
+- time-series plots of anomaly score  
+- behaviour frequency curves (eye closure, yawning, hand near face)  
+- distribution of driver states over the entire video
 
-Hand-to-Face Proximity - Detecting face-touching behaviours (eye rubbing, face touching)
+---
 
-Head Motion Analysis - Tracking vertical head movements to detect nodding
+## Architecture
 
-Advanced Analytics
-Temporal Behaviour Windows - Sliding window analysis of driver behaviour
+The processing pipeline consists of three major stages:
 
-Asymmetric Exponential Smoothing - Scores rise quickly but decay slowly for stable predictions
+1. **Landmark extraction**
+2. **Temporal modelling and scoring**
+3. **Visualisation and analytics**
 
-Dual Scoring System - Temporal drowsiness score + facial anomaly score
+Each video frame is processed to extract facial and hand landmarks, compute behavioural features, update temporal histories, calculate risk scores, and finally generate visual overlays and analytics data.
 
-Behavioural Classification - Alert, Behavioural Fatigue, Critical Anomalous Behaviour states
+---
 
-Output & Visualization
-Annotated Video Output - Real-time overlays with scores and status
+## Feature Extraction
 
-Comprehensive Dashboard - Time-series plots, status distributions, behaviour history
+### Eye Aspect Ratio (EAR)
+EAR is computed from six eye landmarks.  
+A lower EAR indicates eye closure.  
+Both eyes are averaged and thresholded to detect closed-eye frames.
 
-CSV Export - Frame-level data for further analysis
+### Yawn–Chin Ratio
+The vertical distance between the upper lip and chin is normalised by face width.  
+Large values indicate yawning behaviour.
 
-🏗 System Architecture
-text
-Video Input → MediaPipe Processing → Feature Extraction → Temporal Analysis → Visualization
-     ↓                ↓                      ↓                    ↓                 ↓
-  OpenCV        Face Mesh + Hands       EAR, Yawn Ratio,       Sliding Window    Annotated Video
-               Face Detection          Hand Distance,         + Smoothing      + Analytics Dashboard
-                                        Head Motion
-Key Components:
-Feature Extraction - MediaPipe landmarks for facial and hand features
+### Hand-to-Face Proximity
+The distance between fingertip landmarks and the face centre is normalised by face size.  
+A small ratio indicates the hand is near the face.
 
-Temporal Modelling - Behaviour histories over sliding windows
+### Head Motion
+Vertical movement of the nose landmark is tracked inside a temporal window to detect nodding.
 
-Score Computation - Weighted combination of behavioural metrics
+---
 
-Asymmetric Smoothing - Stabilized score curves
+## Temporal Modelling
 
-Visualization - Real-time overlays and post-analysis dashboard
+Binary histories are maintained for:
 
-💻 Installation
-Prerequisites
-Python 3.7+
+- eyes closed  
+- yawning  
+- hand near face  
+- combined eye-closure + yawning events  
 
-Webcam or video input source
+From a sliding window of frames, behaviour ratios are computed and used to generate a **raw temporal drowsiness score**:
 
-Setup
-bash
-# Clone the repository
-git clone https://github.com/yourusername/driver-drowsiness-analytics.git
-cd driver-drowsiness-analytics
 
-# Install required packages
-pip install opencv-python mediapipe numpy pandas matplotlib
+Stemp,raw = 60·reye + 25·ryawn + 10·rhand + 20·rmoderate
 
-# Verify installation
-python -c "import cv2; import mediapipe; print('Setup successful!')"
-Dependencies
-OpenCV - Video processing and visualization
 
-MediaPipe - Facial and hand landmark detection
+The score is clipped to the range [0, 100].
 
-NumPy - Mathematical operations
+---
 
-Pandas - Data management and export
+## Anomaly Modelling
 
-Matplotlib - Dashboard visualization
+An independent anomaly score is generated using:
 
-🚀 Usage
-Basic Usage
-python
-# Run on video file
-python drowsiness_detector.py --input path/to/video.mp4 --output results/
+- standard deviation of EAR  
+- frequent yawning in the window  
+- head nodding amplitude  
+- hand-near-face frequency  
 
-# Run with webcam
-python drowsiness_detector.py --camera 0 --output results/
+Textual behavioural notes are also generated (for example, *frequent yawning* or *irregular eye closure pattern*).
 
-# Custom parameters
-python drowsiness_detector.py --input video.mp4 --window 10 --threshold 0.23
-Command Line Arguments
-Argument	Description	Default
---input	Input video file path	None
---camera	Camera device ID	None
---output	Output directory	./output
---window	Temporal window (seconds)	10
---ear_thresh	EAR threshold for eye closure	0.23
---yawn_thresh	Yawn ratio threshold	0.22
---hand_thresh	Hand proximity threshold	0.9
-🔧 Technical Details
-Feature Extraction
-Eye Aspect Ratio (EAR)
-text
-EAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
-Higher values = eyes open
+---
 
-Lower values (< threshold) = eyes closed
+## Asymmetric Exponential Smoothing
 
-Yawn-Chin Ratio
-text
-R_yawn = d_chin-lip / d_face
-Measures mouth opening normalized by face width
+To avoid unstable behaviour, both the temporal score and anomaly score are smoothed using an asymmetric rule:
 
-Hand-to-Face Proximity
-text
-d_hand-face = √[(hx - fx)² + (hy - fy)²]
-Normalized by face size for scale invariance
+- scores **increase quickly** when risk rises  
+- scores **decrease slowly** when risk reduces  
 
-Scoring System
-Temporal Drowsiness Score:
+This creates a stable and interpretable risk curve suitable for analytics and decision support.
 
-text
-S_temp = 60r_eye + 25r_yawn + 10r_hand + 20r_mod
-Combined Score:
+---
 
-text
-S_combined = 0.7S_temp + 0.3S_anom
-Status Classification
-Score Range	Status	Action
-< 30	Alert	Normal driving
-30 - 60	Behavioural Fatigue	Consider break
-≥ 60	Critical Anomalous	Immediate rest recommended
-📊 Outputs
-1. Annotated Video
-Each frame displays:
+## Driver State and Advice Logic
 
-Current EAR and yawn ratio
+A combined score is computed as:
 
-Binary flags (eyes closed, yawning, hand near face)
 
-Windowed percentages
+Scombined = 0.7 · Stemp,smooth + 0.3 · Sanom,smooth
 
-Current status with colour coding
 
-Smoothed score bars
+Driver states are defined as:
 
-2. Analytics Dashboard
-Time-series plots of drowsiness and anomaly scores
+- **Alert**: Scombined < 30  
+- **Behavioural Fatigue**: 30 ≤ Scombined < 60  
+- **Critical Anomalous Behaviour**: Scombined ≥ 60  
 
-Event ratio trends over time
+Special states:
 
-Status distribution pie chart
+- **Driver Not Visible** – when the face is not detected  
+- **Face Occluded** – when the hand is very close to the face while risk is otherwise low  
 
-Behaviour history timeline
+Each state is associated with short advisory messages such as rest or break suggestions.
 
-3. CSV Export
-Frame-level data including:
+---
 
-Timestamps
+## Implementation
 
-Raw and smoothed scores
+The system is implemented in Python using:
 
-Event flags
+- **:contentReference[oaicite:1]{index=1}** for video processing, overlays and I/O  
+- **MediaPipe by :contentReference[oaicite:2]{index=2}** for face mesh, face detection and hand landmark estimation  
+- NumPy for numerical computations  
+- Pandas and Matplotlib for analytics and dashboard generation  
 
-Status labels
+The main processing loop:
 
-📈 Results
-The system effectively detects:
+1. reads a video frame  
+2. extracts facial and hand landmarks  
+3. computes behavioural features  
+4. updates sliding window histories  
+5. computes raw and smoothed scores  
+6. determines driver status and advice  
+7. draws overlays and stores analytics data  
 
-Micro-sleep episodes through sustained low EAR values
+At the end of processing, all per-frame metrics are exported to a CSV file and used to generate the dashboard plots.
 
-Fatigue indicators through combined behavioural patterns
+---
 
-Anomalous behaviour like frequent face touching
+## Example Use-Cases
 
-Head nodding patterns
+- driver behaviour analysis for research studies  
+- offline evaluation of fatigue detection algorithms  
+- educational projects in computer vision and human behaviour analytics  
+- early-stage driver assistance systems
 
-Sample analytics output includes:
+---
 
-Percentage of time in each alert state
+## Results
 
-Most frequent drowsiness indicators
+The system provides:
 
-Temporal patterns of behaviour changes
+- interpretable behavioural analytics instead of only binary labels  
+- stable temporal trends through asymmetric smoothing  
+- detailed post-run dashboards that show *when*, *how long*, and *why* the driver exhibited fatigue-related behaviour
 
-🔮 Future Work
-Integrate head pose estimation (pitch, yaw, roll)
+---
 
-Implement deep learning models for improved accuracy
+## Limitations
 
-Evaluate on larger datasets with ground truth labels
+- performance depends on face visibility and lighting conditions  
+- landmark-based thresholds may require tuning for different users  
+- no ground-truth physiological validation is used
 
-Deploy on embedded hardware (Raspberry Pi, Jetson Nano)
+---
 
-Add multi-camera support for different viewing angles
+## Future Work
 
-Develop mobile application version
+- explicit head pose estimation (pitch, yaw, roll)  
+- hybrid models combining landmarks with deep learning  
+- evaluation on larger annotated datasets  
+- deployment on embedded in-vehicle hardware
 
-Real-time alert system with audio warnings
-
+---
